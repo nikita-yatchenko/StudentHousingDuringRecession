@@ -1,0 +1,2 @@
+# StudentHousingDuringRecession
+We are checking a hypothesis that university towns have their mean housing prices less effected by recessions. We are going to clean and merge 3 datasets and run a t-test to compare the ratio of the mean price of houses in university towns the quarter before the recession starts compared to the recession bottom. (price_ratio=quarter_before_recession/recession_bottom)
