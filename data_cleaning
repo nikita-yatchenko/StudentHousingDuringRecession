@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Apr 14 15:10:32 2020
+
+@author: nyatchen
+"""
+
+# Hypothesis: University towns have their mean housing prices less effected by recessions. 
+# We clean and merge 3 datasets and run a t-test to compare the ratio of the mean price of houses in university towns the quarter 
+# before the recession starts compared to the recession bottom. (price_ratio=quarter_before_recession/recession_bottom)
+
+import bs4 as bs
+import requests
+import pandas as pd
+import numpy as np
+from scipy.stats import ttest_ind
+import pickle
+import os
+
+#os.chdir('/Users/nyatchen/Desktop/Data Science with Python/Data Cleaning Project')
+curr_dir = os.getcwd()
+
+### Files
+city_zhvi_url = 'http://files.zillowstatic.com/research/public/City/City_Zhvi_AllHomes.csv'
+uni_towns_url = 'https://en.wikipedia.org/wiki/List_of_college_towns#College_towns_in_the_United_States'
+
+
+### Saving University Towns as txt
+
+# Using this dictionary to map state names to two letter acronyms
+states = {'OH': 'Ohio', 'KY': 'Kentucky', 'AS': 'American Samoa', 'NV': 'Nevada', 'WY': 'Wyoming', 'NA': 'National', 'AL': 'Alabama', 'MD': 'Maryland', 'AK': 'Alaska', 'UT': 'Utah', 'OR': 'Oregon', 'MT': 'Montana', 'IL': 'Illinois', 'TN': 'Tennessee', 'DC': 'District of Columbia', 'VT': 'Vermont', 'ID': 'Idaho', 'AR': 'Arkansas', 'ME': 'Maine', 'WA': 'Washington', 'HI': 'Hawaii', 'WI': 'Wisconsin', 'MI': 'Michigan', 'IN': 'Indiana', 'NJ': 'New Jersey', 'AZ': 'Arizona', 'GU': 'Guam', 'MS': 'Mississippi', 'PR': 'Puerto Rico', 'NC': 'North Carolina', 'TX': 'Texas', 'SD': 'South Dakota', 'MP': 'Northern Mariana Islands', 'IA': 'Iowa', 'MO': 'Missouri', 'CT': 'Connecticut', 'WV': 'West Virginia', 'SC': 'South Carolina', 'LA': 'Louisiana', 'KS': 'Kansas', 'NY': 'New York', 'NE': 'Nebraska', 'OK': 'Oklahoma', 'FL': 'Florida', 'CA': 'California', 'CO': 'Colorado', 'PA': 'Pennsylvania', 'DE': 'Delaware', 'NM': 'New Mexico', 'RI': 'Rhode Island', 'MN': 'Minnesota', 'VI': 'Virgin Islands', 'NH': 'New Hampshire', 'MA': 'Massachusetts', 'GA': 'Georgia', 'ND': 'North Dakota', 'VA': 'Virginia'}
+
+if os.path.exists('./uni_towns.pickle') is False:
+    r = requests.get(uni_towns_url)
+    soup = bs.BeautifulSoup(r.text, 'lxml')
+    states_set = set(states.values())
+    uni_towns_list = []
+    for li in soup.findAll('li'):
+        try:
+            combo = li.a.get('title')
+        except AttributeError:
+            continue
+        try:
+            if ', ' in combo:
+                combo_list = combo.split(', ')
+                if not states_set.isdisjoint(combo_list):
+                    uni_towns_list.append(list(combo_list))
+        except TypeError:
+            continue
+    with open('./uni_towns.pickle', 'wb') as f:
+        uni_towns_df = pd.DataFrame(uni_towns_list)
+        uni_towns_df.columns = ['RegionName', 'State','Delete']
+        uni_towns_df.drop('Delete', axis=1, inplace=True)
+        uni_towns_df = uni_towns_df[['State', 'RegionName']]
+        pickle.dump(uni_towns_df, f)
+else:
+    with open('./uni_towns.pickle', 'rb') as f:
+            uni_towns_df = pickle.load(f)
+
+
+### Saving City Zhiv CSV
+if os.path.exists('./City_Zhvi_AllHomes.csv') is False:
+    r = requests.get(city_zhvi_url)
+    with open('./City_Zhvi_AllHomes.csv', 'wb') as f:
+        f.write(r.content)
+
+
+def get_list_of_university_towns():
+    '''Returns a DataFrame of towns and the states they are in from the 
+    university_towns.txt list. The format of the DataFrame should be:
+    DataFrame( [ ["Michigan", "Ann Arbor"], ["Michigan", "Yipsilanti"] ], 
+    columns=["State", "RegionName"]  )
+    
+    The following cleaning needs to be done:
+
+    1. For "State", removing characters from "[" to the end.
+    2. For "RegionName", when applicable, removing every character from " (" to the end.
+    3. Depending on how you read the data, you may need to remove newline character '\n'. '''
+    uni_towns = pd.read_table('university_towns.txt', header = None)
+    uni_towns['State']=uni_towns[uni_towns.iloc[:,0].str.contains('edit')].iloc[:,0].str.split(r'[',n=1,expand=True)[0]
+    uni_towns['State']=uni_towns['State'].ffill()
+    uni_towns['RegionName']=uni_towns[(1-uni_towns.iloc[:,0].str.contains('edit').astype('int')).astype('bool')].iloc[:,0].str.split(' \(', n=1, expand=True)[0].str.split(r'[',n=1,expand=True)[0].str.rstrip(' ')
+    uni_towns.drop(0, axis=1, inplace=True)
+    uni_towns.dropna(inplace=True)
+    
+    return uni_towns
+uni_towns=get_list_of_university_towns()
+#uni_towns=get_list_of_university_towns()
+
+def get_recession_start():
+    '''Returns the year and quarter of the recession start time as a 
+    string value in a format such as 2005q3'''
+    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[3,5])
+    gdp.reset_index(inplace=True)
+    gdp.drop(gdp.index[0:2],axis=0,inplace=True)
+    gdp.drop('index',axis=1,inplace=True)
+    gdp.columns = ['Period', 'GDP']
+    gdp['dtPeriod']=pd.to_datetime(gdp.Period)
+    gdp.set_index('dtPeriod', inplace=True)
+    gdp = gdp[gdp.index>=pd.to_datetime('2000-01-01')]
+    gdp['GDP % change'] = gdp.GDP.pct_change()
+    gdp['GDP % change last'] = gdp['GDP % change'].shift(-1)
+    gdp['consecutive negative'] = gdp['GDP % change'].lt(0) & gdp['GDP % change last'].lt(0)
+    return gdp.loc[gdp['consecutive negative']==True,'Period'][0]
+get_recession_start()
+#gdp.head(50)
+
+def get_recession_end():
+    '''Returns the year and quarter of the recession end time as a 
+    string value in a format such as 2005q3'''
+    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[3,5])
+    gdp.reset_index(inplace=True)
+    gdp.drop(gdp.index[0:2],axis=0,inplace=True)
+    gdp.drop('index',axis=1,inplace=True)
+    gdp.columns = ['Period', 'GDP']
+    gdp['dtPeriod']=pd.to_datetime(gdp.Period)
+    gdp.set_index('dtPeriod', inplace=True)
+    gdp = gdp[gdp.index>=pd.to_datetime('2000-01-01')]
+    gdp['GDP % change'] = gdp.GDP.pct_change()
+    gdp['GDP % change last'] = gdp['GDP % change'].shift(1)
+    gdp['consecutive negative'] = gdp['GDP % change'].lt(0) & gdp['GDP % change last'].lt(0)
+    start = gdp.index[gdp['consecutive negative']==True][0]
+    gdp_recession = gdp[gdp.index >= start]
+    gdp_recession['consecutive pos'] = gdp_recession['GDP % change'].ge(0) & gdp_recession['GDP % change last'].ge(0)
+    return gdp_recession.loc[gdp_recession['consecutive pos']==True, 'Period'][0]
+get_recession_end()
+
+def get_recession_bottom():
+    '''Returns the year and quarter of the recession bottom time as a 
+    string value in a format such as 2005q3'''
+    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[3,5])
+    gdp.reset_index(inplace=True)
+    gdp.drop(gdp.index[0:2],axis=0,inplace=True)
+    gdp.drop('index',axis=1,inplace=True)
+    gdp.columns = ['Period', 'GDP']
+    gdp['dtPeriod']=pd.to_datetime(gdp.Period)
+    gdp.set_index('dtPeriod', inplace=True)
+    start_ix = gdp.index[gdp.Period==get_recession_start()][0]
+    end_ix = gdp.index[gdp.Period==get_recession_end()][0]
+    recession = gdp.loc[start_ix:end_ix,:]
+    return recession.loc[recession.GDP==recession.GDP.min(),'Period'][0]
+get_recession_bottom()  
+
+
+def convert_housing_data_to_quarters():
+    '''Converts the housing data to quarters and returns it as mean 
+    values in a dataframe. This dataframe should be a dataframe with
+    columns for 2000q1 through 2016q3, and should have a multi-index
+    in the shape of ["State","RegionName"].
+    
+    Note: Quarters are defined in the assignment description, they are
+    not arbitrary three month periods.
+    
+    The resulting dataframe should have 67 columns, and 10,730 rows.
+    '''
+    house_data = pd.read_csv('City_Zhvi_AllHomes.csv')
+    house_data = house_data.iloc[:,[2,5,*range(8,len(house_data.columns))]]
+    cols_date = pd.to_datetime(pd.Series(house_data.columns[2:]))
+    dates_after2000 = cols_date[cols_date>=pd.to_datetime('2000-01-01')]
+    cols_after2000 = house_data.columns[[0,1,*list(dates_after2000.index+2)]].tolist()
+    house_data = house_data.iloc[:,[0,1,*list(dates_after2000.index+2)]]
+    quarters = pd.to_datetime(pd.Series(cols_after2000[2:])).dt.quarter.apply(str)
+    years = pd.to_datetime(pd.Series(cols_after2000[2:])).dt.year.apply(str)
+    new_cols = years+'q'+quarters
+    house_data.columns=list(house_data.columns[[0,1]])+list(new_cols)
+    house_data.reset_index(inplace=True)
+    house_data = pd.melt(house_data, id_vars = ['index','State','RegionName'], var_name = 'Quarter', value_name='House Price')
+    house_data.reset_index(inplace=True)
+    house_data = pd.pivot_table(house_data, values='House Price', index=['index','State','RegionName'], columns='Quarter')
+    house_data= house_data.reset_index().set_index(['State','RegionName']).drop(labels='index',axis=1)
+    return house_data
+convert_housing_data_to_quarters()
+
+def run_ttest():
+    '''First creates new data showing the decline or growth of housing prices
+    between the recession start and the recession bottom. Then runs a ttest
+    comparing the university town values to the non-university towns values, 
+    return whether the alternative hypothesis (that the two groups are the same)
+    is true or not as well as the p-value of the confidence. 
+    
+    Return the tuple (different, p, better) where different=True if the t-test is
+    True at a p<0.01 (we reject the null hypothesis), or different=False if 
+    otherwise (we cannot reject the null hypothesis). The variable p should
+    be equal to the exact p value returned from scipy.stats.ttest_ind(). The
+    value for better should be either "university town" or "non-university town"
+    depending on which has a lower mean price ratio (which is equivilent to a
+    reduced market loss).'''
+    house_data = convert_housing_data_to_quarters()
+    univ_pairs = get_list_of_university_towns()
+    
+    q_before = pd.Series(house_data.columns).shift(1)[house_data.columns==get_recession_start()].values[0]
+    q_bottom = get_recession_bottom()
+    
+    hd_before_after = house_data.loc[:,[q_before,q_bottom]]
+    total_mrg = pd.merge(hd_before_after, univ_pairs, how='outer', left_index=True, right_on=['State','RegionName'], indicator=True).set_index(['State','RegionName'])
+    other_houses = total_mrg[total_mrg._merge == 'left_only']
+    univ_houses = total_mrg[total_mrg._merge == 'both']
+    univ_houses['Ratio'] = univ_houses.iloc[:,0]/univ_houses.iloc[:,1]
+    other_houses['Ratio'] = other_houses.iloc[:,0]/other_houses.iloc[:,1]
+    test = ttest_ind(univ_houses['Ratio'],other_houses['Ratio'],nan_policy = "omit")    
+    p = test.pvalue
+    different = test.pvalue < 0.01
+    if different==True:
+        better = "university town"
+    return (different, p, better)
+run_ttest()
