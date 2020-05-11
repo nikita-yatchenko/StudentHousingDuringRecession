@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Apr 14 15:10:32 2020
+Modified on Mon May 11 18:54:00 2020
 
 @author: nyatchen
 """
@@ -29,34 +30,56 @@ uni_towns_url = 'https://en.wikipedia.org/wiki/List_of_college_towns#College_tow
 ### Saving University Towns as txt
 
 # Using this dictionary to map state names to two letter acronyms
-states = {'OH': 'Ohio', 'KY': 'Kentucky', 'AS': 'American Samoa', 'NV': 'Nevada', 'WY': 'Wyoming', 'NA': 'National', 'AL': 'Alabama', 'MD': 'Maryland', 'AK': 'Alaska', 'UT': 'Utah', 'OR': 'Oregon', 'MT': 'Montana', 'IL': 'Illinois', 'TN': 'Tennessee', 'DC': 'District of Columbia', 'VT': 'Vermont', 'ID': 'Idaho', 'AR': 'Arkansas', 'ME': 'Maine', 'WA': 'Washington', 'HI': 'Hawaii', 'WI': 'Wisconsin', 'MI': 'Michigan', 'IN': 'Indiana', 'NJ': 'New Jersey', 'AZ': 'Arizona', 'GU': 'Guam', 'MS': 'Mississippi', 'PR': 'Puerto Rico', 'NC': 'North Carolina', 'TX': 'Texas', 'SD': 'South Dakota', 'MP': 'Northern Mariana Islands', 'IA': 'Iowa', 'MO': 'Missouri', 'CT': 'Connecticut', 'WV': 'West Virginia', 'SC': 'South Carolina', 'LA': 'Louisiana', 'KS': 'Kansas', 'NY': 'New York', 'NE': 'Nebraska', 'OK': 'Oklahoma', 'FL': 'Florida', 'CA': 'California', 'CO': 'Colorado', 'PA': 'Pennsylvania', 'DE': 'Delaware', 'NM': 'New Mexico', 'RI': 'Rhode Island', 'MN': 'Minnesota', 'VI': 'Virgin Islands', 'NH': 'New Hampshire', 'MA': 'Massachusetts', 'GA': 'Georgia', 'ND': 'North Dakota', 'VA': 'Virginia'}
+def get_list_of_university_towns(reload = False):
+    '''Returns a DataFrame of towns and the states they are in. First downloaded
+    from a WikiPedia page: 'https://en.wikipedia.org/wiki/List_of_college_towns#College_towns_in_the_United_States'
+    The format of the DataFrame should be:
+    DataFrame( [ ["Michigan", "Ann Arbor"], ["Michigan", "Yipsilanti"] ], 
+    columns=["State", "RegionName"]  )
+    
+    The following cleaning was done:
 
-if os.path.exists('./uni_towns.pickle') is False:
-    r = requests.get(uni_towns_url)
-    soup = bs.BeautifulSoup(r.text, 'lxml')
-    states_set = set(states.values())
-    uni_towns_list = []
-    for li in soup.findAll('li'):
-        try:
-            combo = li.a.get('title')
-        except AttributeError:
-            continue
-        try:
-            if ', ' in combo:
-                combo_list = combo.split(', ')
-                if not states_set.isdisjoint(combo_list):
-                    uni_towns_list.append(list(combo_list))
-        except TypeError:
-            continue
-    with open('./uni_towns.pickle', 'wb') as f:
-        uni_towns_df = pd.DataFrame(uni_towns_list)
-        uni_towns_df.columns = ['RegionName', 'State','Delete']
-        uni_towns_df.drop('Delete', axis=1, inplace=True)
-        uni_towns_df = uni_towns_df[['State', 'RegionName']]
-        pickle.dump(uni_towns_df, f)
-else:
-    with open('./uni_towns.pickle', 'rb') as f:
-            uni_towns_df = pickle.load(f)
+    1. For "State", removing characters from "[" to the end.
+    2. For "RegionName", when applicable, removing every character from " (" to the end.'''
+    states = {'OH': 'Ohio', 'KY': 'Kentucky', 'AS': 'American Samoa', 'NV': 'Nevada', 
+              'WY': 'Wyoming', 'NA': 'National', 'AL': 'Alabama', 'MD': 'Maryland', 'AK': 'Alaska', 
+              'UT': 'Utah', 'OR': 'Oregon', 'MT': 'Montana', 'IL': 'Illinois', 'TN': 'Tennessee', 'DC': 'District of Columbia', 
+              'VT': 'Vermont', 'ID': 'Idaho', 'AR': 'Arkansas', 'ME': 'Maine', 'WA': 'Washington', 'HI': 'Hawaii', 'WI': 'Wisconsin', 
+              'MI': 'Michigan', 'IN': 'Indiana', 'NJ': 'New Jersey', 'AZ': 'Arizona', 'GU': 'Guam', 'MS': 'Mississippi', 
+              'PR': 'Puerto Rico', 'NC': 'North Carolina', 'TX': 'Texas', 'SD': 'South Dakota', 'MP': 'Northern Mariana Islands', 
+              'IA': 'Iowa', 'MO': 'Missouri', 'CT': 'Connecticut', 'WV': 'West Virginia', 'SC': 'South Carolina', 'LA': 'Louisiana', 
+              'KS': 'Kansas', 'NY': 'New York', 'NE': 'Nebraska', 'OK': 'Oklahoma', 'FL': 'Florida', 'CA': 'California', 'CO': 'Colorado',
+              'PA': 'Pennsylvania', 'DE': 'Delaware', 'NM': 'New Mexico', 'RI': 'Rhode Island', 'MN': 'Minnesota', 'VI': 'Virgin Islands', 
+              'NH': 'New Hampshire', 'MA': 'Massachusetts', 'GA': 'Georgia', 'ND': 'North Dakota', 'VA': 'Virginia'}
+    
+    if os.path.exists('./uni_towns.pickle') is False or reload == True :
+        r = requests.get(uni_towns_url)
+        soup = bs.BeautifulSoup(r.text, 'lxml')
+        states_set = set(states.values())
+        uni_towns_list = []
+        for li in soup.findAll('li'):
+            try:
+                combo = li.a.get('title')
+            except AttributeError:
+                continue
+            try:
+                if ', ' in combo:
+                    combo_list = combo.split(', ')
+                    if not states_set.isdisjoint(combo_list):
+                        uni_towns_list.append(list(combo_list))
+            except TypeError:
+                continue
+        with open('./uni_towns.pickle', 'wb') as f:
+            uni_towns_df = pd.DataFrame(uni_towns_list)
+            uni_towns_df.columns = ['RegionName', 'State','Delete']
+            uni_towns_df.drop('Delete', axis=1, inplace=True)
+            uni_towns_df = uni_towns_df[['State', 'RegionName']]
+            uni_towns_df.State = uni_towns_df.State.map({v:k for k, v in states.items()})
+            pickle.dump(uni_towns_df, f)
+    else:
+        with open('./uni_towns.pickle', 'rb') as f:
+                uni_towns_df = pickle.load(f)
+    return uni_towns_df
 
 
 ### Saving City Zhiv CSV
@@ -65,33 +88,10 @@ if os.path.exists('./City_Zhvi_AllHomes.csv') is False:
     with open('./City_Zhvi_AllHomes.csv', 'wb') as f:
         f.write(r.content)
 
-
-def get_list_of_university_towns():
-    '''Returns a DataFrame of towns and the states they are in from the 
-    university_towns.txt list. The format of the DataFrame should be:
-    DataFrame( [ ["Michigan", "Ann Arbor"], ["Michigan", "Yipsilanti"] ], 
-    columns=["State", "RegionName"]  )
-    
-    The following cleaning needs to be done:
-
-    1. For "State", removing characters from "[" to the end.
-    2. For "RegionName", when applicable, removing every character from " (" to the end.
-    3. Depending on how you read the data, you may need to remove newline character '\n'. '''
-    uni_towns = pd.read_table('university_towns.txt', header = None)
-    uni_towns['State']=uni_towns[uni_towns.iloc[:,0].str.contains('edit')].iloc[:,0].str.split(r'[',n=1,expand=True)[0]
-    uni_towns['State']=uni_towns['State'].ffill()
-    uni_towns['RegionName']=uni_towns[(1-uni_towns.iloc[:,0].str.contains('edit').astype('int')).astype('bool')].iloc[:,0].str.split(' \(', n=1, expand=True)[0].str.split(r'[',n=1,expand=True)[0].str.rstrip(' ')
-    uni_towns.drop(0, axis=1, inplace=True)
-    uni_towns.dropna(inplace=True)
-    
-    return uni_towns
-uni_towns=get_list_of_university_towns()
-#uni_towns=get_list_of_university_towns()
-
 def get_recession_start():
     '''Returns the year and quarter of the recession start time as a 
     string value in a format such as 2005q3'''
-    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[3,5])
+    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[4,6])
     gdp.reset_index(inplace=True)
     gdp.drop(gdp.index[0:2],axis=0,inplace=True)
     gdp.drop('index',axis=1,inplace=True)
@@ -109,7 +109,7 @@ get_recession_start()
 def get_recession_end():
     '''Returns the year and quarter of the recession end time as a 
     string value in a format such as 2005q3'''
-    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[3,5])
+    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[4,6])
     gdp.reset_index(inplace=True)
     gdp.drop(gdp.index[0:2],axis=0,inplace=True)
     gdp.drop('index',axis=1,inplace=True)
@@ -129,7 +129,7 @@ get_recession_end()
 def get_recession_bottom():
     '''Returns the year and quarter of the recession bottom time as a 
     string value in a format such as 2005q3'''
-    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[3,5])
+    gdp = pd.read_excel('gdplev.xls', header = 5, usecols=[4,6])
     gdp.reset_index(inplace=True)
     gdp.drop(gdp.index[0:2],axis=0,inplace=True)
     gdp.drop('index',axis=1,inplace=True)
@@ -194,6 +194,7 @@ def run_ttest():
     
     hd_before_after = house_data.loc[:,[q_before,q_bottom]]
     total_mrg = pd.merge(hd_before_after, univ_pairs, how='outer', left_index=True, right_on=['State','RegionName'], indicator=True).set_index(['State','RegionName'])
+    total_mrg._merge.astype('category')
     other_houses = total_mrg[total_mrg._merge == 'left_only']
     univ_houses = total_mrg[total_mrg._merge == 'both']
     univ_houses['Ratio'] = univ_houses.iloc[:,0]/univ_houses.iloc[:,1]
@@ -203,5 +204,7 @@ def run_ttest():
     different = test.pvalue < 0.01
     if different==True:
         better = "university town"
+    else:
+        better = "other towns"
     return (different, p, better)
 run_ttest()
